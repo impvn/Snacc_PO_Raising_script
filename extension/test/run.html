@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<!--
+  run.html — end-to-end test of the page automation, with no network access.
+
+  It loads the mock SupplyNote form in an iframe, posts real commands to the
+  production bridge.js running inside it, and asserts on what the mock page
+  recorded. Open this file in Chrome (chrome-extension://…/test/run.html) to
+  confirm the automation still works after any change to bridge.js.
+
+  Cases covered:
+    1. happy path            — full PO, submission confirmed with a PO number
+    2. unknown vendor        — must fail loudly, must not submit
+    3. dry run               — fills everything, never clicks Save & Send
+    4. rejected upload       — no line items appear, so nothing is submitted
+    5. short upload          — fewer lines than the CSV had, so nothing is submitted
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Snacc PO Raiser — automation tests</title>
+  <style>
+    body { font: 13px/1.55 system-ui, sans-serif; margin: 0; padding: 20px; background: #f5f6f8; color: #16181d; }
+    h1 { font-size: 17px; margin: 0 0 4px; }
+    p.sub { color: #565c69; margin: 0 0 18px; }
+    iframe { width: 100%; height: 520px; border: 1px solid #e3e6eb; border-radius: 10px; background: #fff; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 18px; background: #fff; border: 1px solid #e3e6eb; border-radius: 10px; overflow: hidden; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eef0f3; font-size: 12.5px; vertical-align: top; }
+    th { background: #fafbfc; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #878d99; }
+    tr:last-child td { border-bottom: 0; }
+    .pass { color: #12805c; font-weight: 700; }
+    .fail { color: #c62828; font-weight: 700; }
+    .skip { color: #878d99; font-weight: 700; }
+    code { font-family: ui-monospace, monospace; font-size: 11.5px; background: #f0f2f5; padding: 1px 4px; border-radius: 4px; }
+    .btnrow { margin-bottom: 14px; display: flex; gap: 8px; }
+    button { padding: 8px 14px; border: 1px solid #e3e6eb; border-radius: 7px; background: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    button.primary { background: #fc8019; border-color: #fc8019; color: #fff; }
+    pre { background: #1b1e24; color: #a9b4c2; padding: 10px; border-radius: 8px; font-size: 11px; overflow: auto; max-height: 220px; }
+  </style>
+</head>
+<body>
+  <h1>Automation tests</h1>
+  <p class="sub">
+    Runs <code>content/bridge.js</code> against <code>test/mock.html</code>. No network, no real orders.
+  </p>
+
+  <div class="btnrow">
+    <button id="run" class="primary">Run all tests</button>
+    <button id="reset">Reload mock</button>
+  </div>
+
+  <table>
+    <thead><tr><th style="width:32%">Case</th><th style="width:12%">Result</th><th>Detail</th></tr></thead>
+    <tbody id="results"></tbody>
+  </table>
+
+  <pre id="trace">Waiting…</pre>
+
+  <iframe id="frame" src="mock.html"></iframe>
+
+  <script type="module">
+    import { REQUIRED_COLUMNS } from '../lib/po-builder.js';
+    import { toCsv } from '../lib/csv.js';
+
+    const frame = document.getElementById('frame');
+    const results = document.getElementById('results');
+    const trace = document.getElementById('trace');
+
+    const SELECTORS = {
+      vendor: ['input[placeholder="e.g Local Vendor"]'],
+      pod: ['input[placeholder="e.g Bagmane"]'],
+      billing: ['input[placeholder="e.g Bagmane"]'],
+      suggestions: ['ul.md-autocomplete-suggestions li'],
+      dateInputs: ['.md-datepicker-input'],
+      bulkAddButton: ['text=Bulk Add', '#bulkAdd'],
+      fileInput: ['#fileInput'],
+      uploadButton: ['text=Upload', '#uploadBtn'],
+      submitButton: ['text=Save and Send', '#saveSend'],
+      confirmation: ['md-toast']
+    };
+
+    const TIMINGS = {
+      elementTimeoutMs: 6000,
+      suggestionTimeoutMs: 3000,
+      suggestionSettleMs: 150,
+      afterSelectMs: 80,
+      afterAttachMs: 150,
+      afterUploadMs: 300,
+      confirmationTimeoutMs: 3000
+    };
+
+    function sampleCsv(lineCount = 3, dropOne = false) {
+      const rows = [];
+      for (let i = 0; i < lineCount; i++) {
+        rows.push({
+          id: `id-${i}`, priceContract: 'C1', minimumOrderQty: '1',
+          skuProductCode: `SKU${1000 + i}`, category: 'Beverages', subCategory: 'Coffee',
+          productTitle: `Test Product ${i}`, recommendedQty: '5', lastAuditedStock: '2',
+          currentStock: '3', quantity: String(2 + i), baseUnit: 'kg', price: `${100 + i}`,
+          conversion: '1', quantity2: '', secondaryUnit: 'box', secondaryUnitPrice: '900',
+          discount: '0', tax: '5'
+        });
+      }
+      return toCsv(REQUIRED_COLUMNS, rows);
+    }
+
+    const basePo = (overrides = {}) => ({
+      vendor: 'Fresh Harvest Foods',
+      location: 'Bagmane',
+      slot: 'Morning',
+      dateUs: '04/15/2025',
+      filename: 'Fresh_Harvest_Foods_Morning_Bagmane_15_04_2025.csv',
+      csv: sampleCsv(3),
+      expectedLines: 3,
+      ...overrides
+    });
+
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    /** Post a command into the iframe's bridge and await its reply. */
+    function call(type, args, timeoutMs = 20000) {
+      return new Promise((resolve, reject) => {
+        const id = `t${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const timer = setTimeout(() => {
+          window.removeEventListener('message', onMsg);
+          reject(new Error(`timeout waiting for ${type}`));
+        }, timeoutMs);
+
+        function onMsg(event) {
+          const d = event.data;
+          if (!d || d.__ns !== 'SNACC_PO' || d.__dir !== 'res') return;
+          if (d.partial) {
+            trace.textContent += `\n  · ${d.progress?.step}: ${d.progress?.detail ?? ''}`;
+            return;
+          }
+          if (d.id !== id) return;
+          clearTimeout(timer);
+          window.removeEventListener('message', onMsg);
+          if (d.ok) resolve(d.result);
+          else reject(new Error(d.error));
+        }
+
+        window.addEventListener('message', onMsg);
+        frame.contentWindow.postMessage({ __ns: 'SNACC_PO', __dir: 'cmd', id, type, args }, '*');
+      });
+    }
+
+    function row(name, status, detail) {
+      const tr = document.createElement('tr');
+      const tdName = document.createElement('td');
+      tdName.textContent = name;
+      const tdStatus = document.createElement('td');
+      tdStatus.className = status;
+      tdStatus.textContent = status.toUpperCase();
+      const tdDetail = document.createElement('td');
+      tdDetail.textContent = detail;
+      tr.append(tdName, tdStatus, tdDetail);
+      results.append(tr);
+    }
+
+    async function resetMock(mutate) {
+      frame.src = 'mock.html';
+      await new Promise((r) => { frame.onload = r; });
+      await sleep(350);
+      if (mutate) {
+        frame.contentWindow.eval(`(${mutate.toString()})()`);
+        await sleep(50);
+      }
+    }
+
+    const mockState = () => frame.contentWindow.__mock;
+
+    async function test(name, fn) {
+      trace.textContent += `\n\n── ${name}`;
+      try {
+        const detail = await fn();
+        row(name, 'pass', detail);
+      } catch (err) {
+        row(name, 'fail', String(err.message || err));
+      }
+    }
+
+    async function runAll() {
+      results.innerHTML = '';
+      trace.textContent = 'Running…';
+
+      await test('1 · happy path submits and confirms', async () => {
+        await resetMock();
+        const r = await call('runPo', { po: basePo(), selectors: SELECTORS, timings: TIMINGS, dateIndex: 1 });
+        if (!r.submitted) throw new Error('bridge did not report submitted');
+        const s = mockState();
+        if (!s.submitted) throw new Error('mock page was never submitted');
+        if (s.vendor !== 'Fresh Harvest Foods') throw new Error(`vendor = ${s.vendor}`);
+        if (s.pod !== 'Bagmane') throw new Error(`pod = ${s.pod} (autocomplete picked the wrong suggestion)`);
+        if (s.expectedDate !== '04/15/2025') throw new Error(`delivery date = ${s.expectedDate}`);
+        if (s.lines.length !== 3) throw new Error(`lines = ${s.lines.length}`);
+        const c = await call('readConfirmation', { cfg: TIMINGS });
+        if (!c.ok || !c.poNumber) throw new Error('confirmation not read');
+        return `${s.lines.length} lines, PO ${c.poNumber}, delivery ${s.expectedDate}`;
+      });
+
+      await test('2 · unknown vendor fails without submitting', async () => {
+        await resetMock();
+        let threw = null;
+        try {
+          await call('runPo', {
+            po: basePo({ vendor: 'Vendor That Does Not Exist' }),
+            selectors: SELECTORS, timings: TIMINGS, dateIndex: 1
+          });
+        } catch (err) { threw = err; }
+        if (!threw) throw new Error('expected a failure but the run succeeded');
+        if (mockState().submitted) throw new Error('DANGER: it submitted anyway');
+        return `failed as expected — "${threw.message.slice(0, 70)}…"`;
+      });
+
+      await test('3 · dry run fills but never submits', async () => {
+        await resetMock();
+        const r = await call('runPo', {
+          po: basePo(), selectors: SELECTORS, timings: TIMINGS, dateIndex: 1, skipSubmit: true
+        });
+        const s = mockState();
+        if (!r.dryRun) throw new Error('bridge did not report dryRun');
+        if (s.submitted) throw new Error('DANGER: dry run submitted an order');
+        if (s.lines.length !== 3) throw new Error(`form was not filled (lines = ${s.lines.length})`);
+        return `form filled with ${s.lines.length} lines, nothing submitted`;
+      });
+
+      await test('4 · rejected upload never submits', async () => {
+        await resetMock(() => { window.__mock.failUpload = true; });
+        let threw = null;
+        try {
+          await call('runPo', { po: basePo(), selectors: SELECTORS, timings: TIMINGS, dateIndex: 1 });
+        } catch (err) { threw = err; }
+        if (!threw) throw new Error('expected a failure but the run succeeded');
+        if (mockState().submitted) throw new Error('DANGER: submitted with no line items');
+        return `aborted before Save & Send — "${threw.message.slice(0, 60)}…"`;
+      });
+
+      await test('5 · short upload never submits a partial PO', async () => {
+        await resetMock(() => { window.__mock.dropLastLine = true; });
+        let threw = null;
+        try {
+          await call('runPo', { po: basePo(), selectors: SELECTORS, timings: TIMINGS, dateIndex: 1 });
+        } catch (err) { threw = err; }
+        if (!threw) throw new Error('expected a failure but the run succeeded');
+        if (mockState().submitted) throw new Error('DANGER: submitted a partial PO');
+        return `detected 2 of 3 lines and refused — "${threw.message.slice(0, 60)}…"`;
+      });
+
+      const passed = results.querySelectorAll('.pass').length;
+      const failed = results.querySelectorAll('.fail').length;
+      trace.textContent += `\n\n${passed} passed, ${failed} failed`;
+    }
+
+    document.getElementById('run').addEventListener('click', runAll);
+    document.getElementById('reset').addEventListener('click', () => resetMock());
+  </script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "forecast": {
+    "headers": ["SKUcode", "Quantity", "Vendor", "Location", "Date", "Slot"],
+    "rows": [
+      ["SKU1001", "4", "Fresh Harvest", "Bagmane", "15/04/2025", "Morning"],
+      ["SKU1001", "6", "Fresh Harvest", "Bagmane", "15/04/2025", "Morning"],
+      ["SKU404", "2", "Fresh Harvest", "Bagmane", "15/04/2025", "Morning"],
+      ["SKU1002", "abc", "Fresh Harvest", "Bagmane", "15/04/2025", "Morning"],
+      ["SKU1002", "0", "Fresh Harvest", "Bagmane", "15/04/2025", "Morning"],
+      ["SKU1003", "3", "Ghost Vendor", "Bagmane", "15/04/2025", "Morning"]
+    ]
+  },
+  "pods": {
+    "headers": ["Location", "PodCode", "Zone"],
+    "rows": [["Bagmane", "BLR-01", "East"]]
+  },
+  "vendors": {
+    "Fresh Harvest": {
+      "headers": ["id", "priceContract", "minimumOrderQty", "skuProductCode", "category", "subCategory", "productTitle", "recommendedQty", "lastAuditedStock", "currentStock", "baseUnit", "price", "conversion", "quantity2", "secondaryUnit", "secondaryUnitPrice", "discount", "tax"],
+      "rows": [
+        ["11", "C-1", "1", "SKU1001", "Produce", "Vegetables", "Tomato", "5", "2", "3", "kg", "40", "1", "", "crate", "480", "0", "5"],
+        ["11", "C-1", "1", "SKU1001", "Produce", "Vegetables", "Tomato DUPLICATE ROW", "5", "2", "3", "kg", "40", "1", "", "crate", "480", "0", "5"],
+        ["12", "C-1", "5", "SKU1002", "Dairy", "Milk", "Milk 1L", "8", "4", "5", "ltr", "58", "12", "", "crate", "696", "0", "0"]
+      ]
+    }
+  }
+}

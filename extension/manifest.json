@@ -1,0 +1,62 @@
+{
+  "manifest_version": 3,
+  "name": "Snacc PO Raiser",
+  "version": "1.0.0",
+  "description": "Raises bulk Purchase Orders on SupplyNote from a shared Google Sheets forecast, using your own logged-in accounts.",
+
+  "permissions": [
+    "storage",
+    "tabs",
+    "sidePanel",
+    "scripting",
+    "alarms",
+    "downloads"
+  ],
+
+  "host_permissions": [
+    "https://www.supplynote.in/*",
+    "https://docs.google.com/*",
+    "https://drive.google.com/*",
+    "https://*.googleusercontent.com/*"
+  ],
+
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+
+  "action": {
+    "default_title": "Snacc PO Raiser",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://www.supplynote.in/*"],
+      "js": ["content/relay.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": ["test/*", "assets/*"],
+      "matches": ["https://www.supplynote.in/*", "http://localhost/*"]
+    }
+  ]
+}
