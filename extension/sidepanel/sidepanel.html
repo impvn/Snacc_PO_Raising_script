@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Snacc PO Raiser</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">PO</div>
+      <div class="brand-text">
+        <h1>Snacc PO Raiser</h1>
+        <p id="whoami" class="subtitle">Not connected</p>
+      </div>
+    </div>
+    <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
+  </header>
+
+  <nav class="stepper" id="stepper" aria-label="Steps">
+    <button class="step is-active" data-step="connect"><span>1</span>Connect</button>
+    <button class="step" data-step="checks"><span>2</span>Checks</button>
+    <button class="step" data-step="run"><span>3</span>Run</button>
+    <button class="step" data-step="ledger"><span>4</span>History</button>
+  </nav>
+
+  <main id="main">
+    <!-- ============================ CONNECT ============================ -->
+    <section class="view is-active" data-view="connect">
+      <div class="card">
+        <h2>1 · Connect your spreadsheets</h2>
+        <p class="hint">
+          Paste the links exactly as they appear in your browser. The extension reads them with
+          <strong>your own Google account</strong> — it never stores a password or a key file.
+        </p>
+
+        <label class="field">
+          <span>Forecast spreadsheet</span>
+          <input type="url" id="forecast-url" placeholder="https://docs.google.com/spreadsheets/d/…" spellcheck="false" />
+          <small class="field-help">Contains the PO_Status and Listed Pods tabs.</small>
+        </label>
+
+        <label class="field">
+          <span>Vendor template spreadsheet</span>
+          <input type="url" id="vendor-url" placeholder="https://docs.google.com/spreadsheets/d/…" spellcheck="false" />
+          <small class="field-help">One tab per vendor, holding the SupplyNote catalogue columns. Leave blank if these tabs live in the forecast spreadsheet.</small>
+        </label>
+
+        <div class="btn-row">
+          <button id="btn-connect" class="btn btn-primary">Connect</button>
+          <span id="connect-status" class="inline-status" role="status"></span>
+        </div>
+      </div>
+
+      <div class="card" id="tabs-card" hidden>
+        <h2>2 · Choose the tabs</h2>
+        <div class="field">
+          <span>Forecast / PO_Status tab</span>
+          <select id="forecast-tab"></select>
+        </div>
+        <div class="field">
+          <span>Listed Pods tab</span>
+          <select id="pods-tab"></select>
+        </div>
+        <div class="field">
+          <span>Vendor tabs found</span>
+          <div id="vendor-tab-list" class="chip-list"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>3 · Limit this run <span class="optional">optional</span></h2>
+        <p class="hint">Leave everything empty to raise the whole sheet.</p>
+        <div class="grid-2">
+          <label class="field">
+            <span>Vendors</span>
+            <input type="text" id="filter-vendors" placeholder="comma separated" />
+          </label>
+          <label class="field">
+            <span>Locations</span>
+            <input type="text" id="filter-locations" placeholder="comma separated" />
+          </label>
+          <label class="field">
+            <span>Slots</span>
+            <input type="text" id="filter-slots" placeholder="comma separated" />
+          </label>
+          <label class="field">
+            <span>Deliver from</span>
+            <input type="date" id="filter-from" />
+          </label>
+          <label class="field">
+            <span>Deliver to</span>
+            <input type="date" id="filter-to" />
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>4 · SupplyNote</h2>
+        <p class="hint">
+          You must already be signed in to <a href="https://www.supplynote.in/signin" target="_blank" rel="noreferrer">supplynote.in</a>
+          in this browser. Orders are raised under <strong>your</strong> account, so the platform records who placed them.
+        </p>
+        <div class="btn-row">
+          <button id="btn-check-session" class="btn">Check login</button>
+          <button id="btn-open-sn" class="btn btn-ghost">Open SupplyNote</button>
+          <span id="session-status" class="inline-status" role="status"></span>
+        </div>
+      </div>
+
+      <div class="sticky-actions">
+        <button id="btn-to-checks" class="btn btn-primary btn-lg" disabled>Run checks →</button>
+      </div>
+    </section>
+
+    <!-- ============================ CHECKS ============================ -->
+    <section class="view" data-view="checks">
+      <div id="checks-empty" class="card empty">
+        <p>No checks run yet.</p>
+        <button class="btn btn-primary" data-goto="connect">Back to Connect</button>
+      </div>
+
+      <div id="checks-content" hidden>
+        <div class="card summary-card">
+          <div class="summary-grid">
+            <div class="stat"><b id="sum-pos">0</b><span>POs to raise</span></div>
+            <div class="stat"><b id="sum-lines">0</b><span>line items</span></div>
+            <div class="stat"><b id="sum-vendors">0</b><span>vendors</span></div>
+            <div class="stat"><b id="sum-value">₹0</b><span>est. value</span></div>
+          </div>
+          <div id="verdict" class="verdict"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Checks</h2>
+            <button id="btn-recheck" class="btn btn-sm">Re-run</button>
+          </div>
+          <ul id="checks-list" class="checks"></ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Purchase orders</h2>
+            <div class="btn-row">
+              <button id="btn-download-all" class="btn btn-sm">Download CSVs</button>
+              <button id="btn-expand-all" class="btn btn-sm btn-ghost">Expand all</button>
+            </div>
+          </div>
+          <div id="po-list" class="po-list"></div>
+        </div>
+
+        <div class="sticky-actions">
+          <div class="start-block">
+            <label class="switch">
+              <input type="checkbox" id="dry-run-toggle" />
+              <span class="track"></span>
+              <span class="switch-label">Dry run — fill the first form, submit nothing</span>
+            </label>
+            <div class="btn-row">
+              <button id="btn-dry-run" class="btn btn-lg">Dry run</button>
+              <button id="btn-start" class="btn btn-primary btn-lg" disabled>Start raising POs</button>
+            </div>
+            <p class="fineprint">
+              Every PO is confirmed by SupplyNote before it is counted as raised. Anything that cannot be
+              confirmed is flagged for you to check by hand — it is never retried automatically.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ RUN ============================ -->
+    <section class="view" data-view="run">
+      <div class="card" id="run-card">
+        <div class="card-head">
+          <h2>Progress</h2>
+          <button id="btn-stop" class="btn btn-sm btn-danger" hidden>Stop</button>
+        </div>
+
+        <div id="run-idle" class="empty">
+          <p>Nothing is running.</p>
+          <button class="btn btn-primary" data-goto="checks">Go to Checks</button>
+        </div>
+
+        <div id="run-live" hidden>
+          <div class="progress-head">
+            <span id="run-label">Preparing…</span>
+            <span id="run-count">0 / 0</span>
+          </div>
+          <div class="progress"><div id="progress-bar" class="progress-bar"></div></div>
+          <div id="current-po" class="current-po"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Results</h2>
+          <button id="btn-clear-log" class="btn btn-sm btn-ghost">Clear log</button>
+        </div>
+        <div id="results" class="results"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Activity log</h2></div>
+        <pre id="log" class="log"></pre>
+      </div>
+    </section>
+
+    <!-- ============================ LEDGER ============================ -->
+    <section class="view" data-view="ledger">
+      <div class="card">
+        <div class="card-head">
+          <h2>Already raised</h2>
+          <button id="btn-clear-ledger" class="btn btn-sm btn-danger-ghost">Clear all</button>
+        </div>
+        <p class="hint">
+          This browser remembers every PO it submitted. Re-running the same sheet will not raise the same
+          order twice — that is the guard against duplicate orders reaching vendors.
+        </p>
+        <div id="ledger-list" class="ledger"></div>
+      </div>
+    </section>
+
+    <!-- ============================ SETTINGS ============================ -->
+    <section class="view" data-view="settings">
+      <div class="card">
+        <div class="card-head">
+          <h2>Settings</h2>
+          <button id="btn-close-settings" class="btn btn-sm">Done</button>
+        </div>
+
+        <h3 class="section-title">Safety</h3>
+        <label class="switch"><input type="checkbox" id="set-dry-first" /><span class="track"></span><span class="switch-label">Stop after the first PO until I confirm</span></label>
+        <label class="switch"><input type="checkbox" id="set-skip-raised" /><span class="track"></span><span class="switch-label">Skip POs this browser already raised</span></label>
+        <label class="switch"><input type="checkbox" id="set-stop-unverified" /><span class="track"></span><span class="switch-label">Halt the run if a submission cannot be confirmed</span></label>
+
+        <div class="grid-2">
+          <label class="field"><span>Max attempts per PO</span><input type="number" id="set-max-attempts" min="1" max="5" /></label>
+          <label class="field"><span>Stop after N consecutive failures</span><input type="number" id="set-max-consec" min="1" max="20" /></label>
+          <label class="field"><span>Delivery date field index</span><input type="number" id="set-date-index" min="0" max="5" /></label>
+          <label class="field"><span>Max POs per run</span><input type="number" id="set-max-pos" min="1" max="2000" /></label>
+        </div>
+
+        <h3 class="section-title">Field selectors</h3>
+        <p class="hint">
+          One selector per line; each is tried in order. Both CSS and XPath work. If SupplyNote changes
+          their layout, use <em>Inspect page</em> to find the new values and paste them here — no new
+          extension build needed.
+        </p>
+        <div class="btn-row">
+          <button id="btn-inspect" class="btn btn-sm">Inspect page</button>
+          <button id="btn-reset-selectors" class="btn btn-sm btn-ghost">Restore defaults</button>
+        </div>
+        <div id="inspector" class="inspector" hidden></div>
+        <div id="selector-fields"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Confirmation dialog before anything is submitted -->
+  <div id="confirm-overlay" class="overlay" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">Confirm submission</h2>
+      <div id="confirm-body"></div>
+      <div class="btn-row dialog-actions">
+        <button id="confirm-cancel" class="btn">Cancel</button>
+        <button id="confirm-ok" class="btn btn-primary">Raise these POs</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

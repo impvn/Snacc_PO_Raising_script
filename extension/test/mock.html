@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<!--
+  mock.html — a stand-in for https://www.supplynote.in/orders/create
+
+  It reproduces the parts of the real page that the automation depends on:
+  Angular-Material-style autocompletes that only populate after an `input`
+  event, two .md-datepicker-input fields, a "Bulk Add" button that reveals an
+  ng-hide file input, an Upload button, and a Save & Send button that produces
+  a confirmation toast containing a PO number.
+
+  bridge.js is loaded directly as a classic script, so the exact same code that
+  runs in production is what gets exercised here. run.html drives it.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Create Order · Mock SupplyNote</title>
+  <style>
+    body { font: 13px/1.5 system-ui, sans-serif; margin: 0; background: #f4f5f7; color: #1b1e24; }
+    md-toolbar { display: block; background: #fff; border-bottom: 1px solid #e3e6eb; padding: 12px 16px; font-weight: 700; }
+    md-content { display: block; padding: 16px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 760px; }
+    md-input-container { display: block; position: relative; }
+    label { display: block; font-size: 11px; color: #565c69; margin-bottom: 4px; font-weight: 600; }
+    input { width: 100%; padding: 8px 10px; border: 1px solid #d7dbe2; border-radius: 6px; font: inherit; box-sizing: border-box; }
+    ul.md-autocomplete-suggestions { list-style: none; margin: 4px 0 0; padding: 4px; background: #fff; border: 1px solid #e3e6eb; border-radius: 6px; position: absolute; z-index: 5; width: 100%; box-sizing: border-box; }
+    ul.md-autocomplete-suggestions li { padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+    ul.md-autocomplete-suggestions li:hover { background: #fff3e8; }
+    .ng-hide { display: none !important; }
+    button { padding: 8px 14px; border: 1px solid #d7dbe2; border-radius: 6px; background: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    button.primary { background: #fc8019; border-color: #fc8019; color: #fff; }
+    .row { display: flex; gap: 10px; align-items: center; margin: 16px 0; flex-wrap: wrap; }
+    table { border-collapse: collapse; width: 100%; background: #fff; }
+    th, td { border: 1px solid #e3e6eb; padding: 6px 8px; text-align: left; font-size: 12px; }
+    md-toast { display: block; position: fixed; left: 16px; right: 16px; bottom: 16px; background: #1b1e24; color: #fff; padding: 12px 14px; border-radius: 8px; }
+    #state { margin-top: 16px; padding: 10px; background: #fff; border: 1px dashed #d7dbe2; border-radius: 6px; font-family: ui-monospace, monospace; font-size: 11px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <md-toolbar>Create Purchase Order</md-toolbar>
+  <md-content>
+    <div class="grid">
+      <md-input-container>
+        <label for="input-18">Vendor</label>
+        <input id="input-18" type="text" placeholder="e.g Local Vendor" ng-model="vm.order.vendor" autocomplete="off" />
+      </md-input-container>
+
+      <md-input-container>
+        <label for="input-21">Delivery Address</label>
+        <input id="input-21" type="text" placeholder="e.g Bagmane" ng-model="vm.order.pod" autocomplete="off" />
+      </md-input-container>
+
+      <md-input-container>
+        <label for="input-24">Billing Address</label>
+        <input id="input-24" type="text" placeholder="e.g Bagmane" ng-model="vm.order.billing" autocomplete="off" />
+      </md-input-container>
+
+      <md-input-container>
+        <label>Order date</label>
+        <input class="md-datepicker-input" id="date-0" type="text" placeholder="mm/dd/yyyy" ng-model="vm.order.orderDate" />
+      </md-input-container>
+
+      <md-input-container>
+        <label>Expected delivery</label>
+        <input class="md-datepicker-input" id="date-1" type="text" placeholder="mm/dd/yyyy" ng-model="vm.order.expectedDate" />
+      </md-input-container>
+    </div>
+
+    <div class="row">
+      <button type="button" id="bulkAdd"><span>Bulk Add</span></button>
+      <input id="fileInput" type="file" class="ng-hide" accept=".csv" />
+      <button type="button" id="uploadBtn" class="ng-hide"><span>Upload</span></button>
+    </div>
+
+    <table id="grid" class="ng-hide">
+      <thead><tr><th>#</th><th>SKU</th><th>Product</th><th>Qty</th><th>Price</th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="row">
+      <md-toolbar style="flex:1">
+        <div style="display:flex; justify-content:flex-end; gap:8px">
+          <button type="button"><span>Cancel</span></button>
+          <button type="button" id="saveSend" class="primary"><span>Save and Send</span></button>
+        </div>
+      </md-toolbar>
+    </div>
+
+    <div id="state">state: idle</div>
+  </md-content>
+
+  <script src="../content/bridge.js"></script>
+  <script src="mock-app.js"></script>
+</body>
+</html>

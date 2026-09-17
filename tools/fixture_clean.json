@@ -1,0 +1,38 @@
+{
+  "forecast": {
+    "headers": ["SKUcode", "Quantity", "Vendor", "Location", "Date", "Slot", "Channel"],
+    "rows": [
+      ["SKU1001", "4", "Fresh Harvest", "Bagmane", "15/04/2025", "Morning", "Cafe"],
+      ["SKU1002", "2", "Fresh Harvest", "Bagmane", "15/04/2025", "Morning", "Cafe"],
+      ["SKU1003", "10", "Fresh Harvest", "Bagmane", "15/04/2025", "Morning", "Cafe"],
+      ["SKU1001", "7", "Fresh Harvest", "Ecospace", "15/04/2025", "Evening", "Cafe"],
+      ["SKU1002", "3", "Daily Dairy", "Bagmane", "16/04/2025", "Morning", "Cafe"],
+      ["SKU9999", "5", "Daily Dairy", "Closed Pod", "16/04/2025", "Morning", "Cafe"],
+      ["SKU1003", "6", "Daily Dairy", "Ecospace", "16/04/2025", "Evening", "Cafe"]
+    ]
+  },
+  "pods": {
+    "headers": ["Location", "PodCode", "Zone"],
+    "rows": [
+      ["Bagmane", "BLR-01", "East"],
+      ["Ecospace", "BLR-02", "North"]
+    ]
+  },
+  "vendors": {
+    "Fresh Harvest": {
+      "headers": ["id", "priceContract", "minimumOrderQty", "skuProductCode", "category", "subCategory", "productTitle", "recommendedQty", "lastAuditedStock", "currentStock", "baseUnit", "price", "conversion", "quantity2", "secondaryUnit", "secondaryUnitPrice", "discount", "tax"],
+      "rows": [
+        ["11", "C-1", "1", "SKU1001", "Produce", "Vegetables", "Tomato", "5", "2", "3", "kg", "40", "1", "", "crate", "480", "0", "5"],
+        ["12", "C-1", "1", "SKU1002", "Dairy", "Milk", "Milk 1L", "8", "4", "5", "ltr", "58", "12", "", "crate", "696", "0", "0"],
+        ["13", "C-2", "2", "SKU1003", "Bakery", "Bread", "Burger Bun", "20", "6", "9", "pcs", "7.5", "24", "", "box", "180", "2", "5"]
+      ]
+    },
+    "Daily Dairy": {
+      "headers": ["id", "priceContract", "minimumOrderQty", "skuProductCode", "category", "subCategory", "productTitle", "recommendedQty", "lastAuditedStock", "currentStock", "baseUnit", "price", "conversion", "quantity2", "secondaryUnit", "secondaryUnitPrice", "discount", "tax"],
+      "rows": [
+        ["21", "C-9", "1", "SKU1002", "Dairy", "Milk", "Toned Milk 1L", "10", "3", "4", "ltr", "52", "12", "", "crate", "624", "0", "0"],
+        ["22", "C-9", "1", "SKU1003", "Bakery", "Bread", "Burger Bun", "20", "6", "9", "pcs", "7", "24", "", "box", "168", "0", "5"]
+      ]
+    }
+  }
+}
