@@ -16,7 +16,10 @@ import pandas as pd
 from datetime import datetime
 import time
 import os
+import sys
 import traceback
+from getpass import getpass
+from pathlib import Path
 
 def setup_driver():
     chrome_options = Options()
@@ -224,9 +227,64 @@ def upload_bulk_orders_from_df(driver, wait, csv_file_map_df):
 
     return successful_groups, failed_groups
 
+# ---------------------------------------------------------------------------
+# Configuration
+#
+# Nothing secret belongs in this file. It used to hold a shared SupplyNote
+# password in plain text and an absolute path into one person's OneDrive
+# folder; both are now read from the environment.
+#
+# Copy .env.example to .env, or set these in your shell / task scheduler:
+#
+#   SNACC_SERVICE_KEY   path to the Google service-account JSON
+#   SNACC_OUTPUT_DIR    where generated PO CSVs are written
+#   SNACC_USERNAME      SupplyNote user id
+#   SNACC_PASSWORD      SupplyNote password (prompted for if unset)
+#
+# See SECURITY.md before running this script at all.
+# ---------------------------------------------------------------------------
+
+REPO_ROOT = Path(__file__).resolve().parent
+
+SERVICE_KEY_PATH = Path(os.environ.get("SNACC_SERVICE_KEY", REPO_ROOT / "service-key.json"))
+OUTPUT_DIRECTORY = Path(os.environ.get("SNACC_OUTPUT_DIR", REPO_ROOT / "POs"))
+SUPPLYNOTE_USERNAME = os.environ.get("SNACC_USERNAME", "")
+SHEET_NAME = os.environ.get("SNACC_SHEET_NAME", "BLR-Forecasting-Sheet-POs-Pawan-3-New-Template")
+TRANSFORMED_SHEET_NAME = os.environ.get("SNACC_TRANSFORMED_SHEET", "PO_Status")
+# A retry loop with no ceiling will hammer SupplyNote forever if one PO can
+# never succeed -- which happens whenever a group has no CSV to upload.
+MAX_ROUNDS = int(os.environ.get("SNACC_MAX_ROUNDS", "3"))
+
+
+def get_credentials():
+    """Return (user_id, password), prompting rather than embedding a secret."""
+    user_id = SUPPLYNOTE_USERNAME
+    password = os.environ.get("SNACC_PASSWORD", "")
+
+    if not user_id:
+        user_id = input("SupplyNote user id: ").strip()
+    if not password:
+        # getpass does not echo, so the password stays out of screen recordings,
+        # shoulder-surfing and any log that captures stdin.
+        password = getpass("SupplyNote password: ")
+
+    if not user_id or not password:
+        raise SystemExit("SupplyNote user id and password are required.")
+    return user_id, password
+
+
+def require_service_key():
+    if not SERVICE_KEY_PATH.is_file():
+        raise SystemExit(
+            f"Google service-account key not found at {SERVICE_KEY_PATH}\n"
+            f"Set SNACC_SERVICE_KEY to its path. Never commit the key itself."
+        )
+    return str(SERVICE_KEY_PATH)
+
+
 def main():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    credentials = ServiceAccountCredentials.from_json_keyfile_name(r"C:\Users\benak\OneDrive\Desktop\VS Code files - Pawan\service-key.json", scope)
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(require_service_key(), scope)
     client = gspread.authorize(credentials)
 
     driver = setup_driver()
@@ -234,13 +292,25 @@ def main():
 
     try:
         driver.get("https://www.supplynote.in/signin")
-        login(driver, wait, 'Snaccbyswiggy', 'Newage@2025')
+        user_id, password = get_credentials()
+        login(driver, wait, user_id, password)
 
-        sheet_name = "BLR-Forecasting-Sheet-POs-Pawan-3-New-Template"
-        transformed_sheet_name = "PO_Status"
-        output_directory = r"C:\Users\benak\OneDrive\Desktop\VS Code files - Pawan\POs"
+        sheet_name = SHEET_NAME
+        transformed_sheet_name = TRANSFORMED_SHEET_NAME
+        output_directory = str(OUTPUT_DIRECTORY)
 
         csv_file_map_df = prepare_csv_files_from_sheets(client, sheet_name, transformed_sheet_name, output_directory)
+
+        if csv_file_map_df.empty:
+            # prepare_csv_files_from_sheets swallows its own errors and returns
+            # an empty frame. Continuing would raise a KeyError on 'Filepath'
+            # a few lines down, which tells nobody what actually went wrong.
+            raise SystemExit(
+                "No PO CSVs were generated. Check the sheet names above, the "
+                "Listed Pods tab, and that every vendor has a tab in "
+                "Vendor_Wise_PO_Template."
+            )
+
         csv_file_map_df['Filepath'] = csv_file_map_df['Filepath'].str.replace('\\', '\\\\', regex=False)
 
         successful_groups, failed_groups = upload_bulk_orders_from_df(driver, wait, csv_file_map_df)
@@ -248,19 +318,51 @@ def main():
         print("\nSummary:")
         print(f"Successful uploads: {len(successful_groups)}")
         print(f"Failed uploads: {len(failed_groups)}")
-        failed_groups
 
-        while len(failed_groups) != 0:
+        for round_no in range(1, MAX_ROUNDS + 1):
+            if not failed_groups:
+                break
+
             df_failed = pd.DataFrame(failed_groups, columns=['Vendor', 'Location', 'Slot', 'Date'])
-            new_df_csv_file_map_df = pd.merge(csv_file_map_df, df_failed, how='right', on=['Vendor', 'Location', 'Date', 'Slot'])
-            successful_groups, failed_groups = upload_bulk_orders_from_df(driver, wait, new_df_csv_file_map_df)
+            # An inner join, not a right join. A right join keeps failed groups
+            # that have no CSV at all, giving them a NaN filepath that can never
+            # upload -- so the loop below would never terminate.
+            retry_df = pd.merge(
+                csv_file_map_df, df_failed,
+                how='inner', on=['Vendor', 'Location', 'Date', 'Slot']
+            )
+            unrecoverable = len(failed_groups) - len(retry_df)
+            if unrecoverable > 0:
+                print(
+                    f"Warning: {unrecoverable} failed group(s) have no CSV to "
+                    f"retry with and are being dropped."
+                )
+            if retry_df.empty:
+                break
 
-        if len(failed_groups) == 0:
-            print("All Purchase Orders raised successfully")
-            driver.quit()
+            print(f"\nRetry round {round_no}/{MAX_ROUNDS}: {len(retry_df)} PO(s)")
+            round_success, failed_groups = upload_bulk_orders_from_df(driver, wait, retry_df)
+            successful_groups.extend(round_success)
+            time.sleep(3)
+
+        if failed_groups:
+            print(
+                f"\n{len(failed_groups)} PO(s) still failing after {MAX_ROUNDS} "
+                f"retry round(s):"
+            )
+            for vendor, location, slot, date in failed_groups:
+                print(f"  - {vendor} | {location} | {slot} | {date}")
+            print("These need a human. They were NOT retried indefinitely.")
+        else:
+            print("\nAll Purchase Orders raised successfully")
 
     finally:
-        driver.quit()
+        # quit() is idempotent in intent but raises on an already-dead session,
+        # so guard it: this runs even after a successful quit above.
+        try:
+            driver.quit()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     main()
